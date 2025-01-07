@@ -42,14 +42,16 @@ class AzureBlobStorage:
         self.container_client = self.blob_service_client.get_container_client(self.container_name)
 
     def list_blobs(self, prefix=None, suffix=None):
-        """List all blobs in the container, optionally filtered by prefix.
+        """List all blobs in the container, optionally filtered by prefix and suffix.
 
         Args:
             prefix (str, optional): Filter results to blobs with this prefix.
+            suffix (str, optional): Filter results to blobs with this suffix.
 
         Returns:
             list: List of blob names.
         """
+        # now you can store prefix/suffix also in the .env file
         self.prefix = prefix or self.os.getenv('prefix')
         self.suffix = suffix or self.os.getenv('suffix')
         
