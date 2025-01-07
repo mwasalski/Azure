@@ -17,12 +17,13 @@ class AzureBlobStorage:
         import os
         from dotenv import load_dotenv
         
-        
+        # now you dont have to import these libraries in the methods
         self.bsc = bsc
         self.os = os
         self.load_dotenv = load_dotenv
+        
         # Load environment variables
-        load_dotenv()
+        self.load_dotenv()
 
         # you will connect to Storage Account that is in your .env file or you paste the connection string in the parameter
         self.connection_string = connection_string or os.getenv('connection_string')
@@ -37,7 +38,7 @@ class AzureBlobStorage:
             )
 
         # initializing connection to the storage account and the container
-        self.blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
+        self.blob_service_client = bsc.from_connection_string(self.connection_string)
         self.container_client = self.blob_service_client.get_container_client(self.container_name)
 
     def list_blobs(self, prefix=None, suffix=None):
@@ -49,8 +50,8 @@ class AzureBlobStorage:
         Returns:
             list: List of blob names.
         """
-        self.prefix = prefix or os.getenv('prefix')
-        self.suffix = suffix or os.getenv('suffix')
+        self.prefix = prefix or self.os.getenv('prefix')
+        self.suffix = suffix or self.os.getenv('suffix')
         
         blob_list = self.container_client.list_blobs(name_starts_with=prefix, name_ends_with=suffix)
         return [blob.name for blob in blob_list]
