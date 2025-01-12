@@ -1,3 +1,14 @@
+# to do:
+# parquet do df
+# json to df
+# csv to df
+# excel to df
+# sql to df
+
+# df to excel
+
+
+
 class AzureBlobStorage:
     def __init__(self, connection_string=None, container_name=None): # both are optional, if empty then it will use data the .env file
         # libraries for connecting to Azure Blob Storage and loading environment variables
@@ -57,3 +68,20 @@ class AzureBlobStorage:
         
         blob_list = self.container_client.list_blobs(name_starts_with=prefix, name_ends_with=suffix)
         return [blob.name for blob in blob_list]
+    
+    def parquet_to_df(self, blob_name):
+        """Convert a Parquet file to a pandas DataFrame.
+
+        Args:
+            blob_name (str): The name of the Parquet file to convert.
+
+        Returns:
+            pd.DataFrame: The DataFrame representation of the Parquet file.
+        """
+
+    def df_to_excel(self, blob):
+        
+        blob_list = self.container_client.list_blobs()
+        for blob in blob_list:
+            df = self.bsc.load_blob_to_dataframe(self.connection_string, blob)
+            df.to_excel(blob.name)
