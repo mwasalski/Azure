@@ -1,80 +1,36 @@
-# Final version
+from azure.storage.blob import BlobServiceClient
+import os
+import pandas as pd
+import io
+from dotenv import load_dotenv
+from typing import Optional, List, Union
+
+
 class AzureBlobStorage:
-    def __init__(self, connection_string=None, container_name=None):
+    def __init__(self, connection_string: Optional[str] = None, container_name: Optional[str] = None):
         """
         Initializes connection to Azure Blob Storage
         Args:
             connection_string (str, optional): Azure storage connection string, recommended to use .env file
             container_name (str, optional): Container name, recommended to use .env file
         """
-        # Importing libraries
-        from azure.storage.blob import BlobServiceClient as bsc
-        import os
-        from dotenv import load_dotenv
+        load_dotenv()
         
-
-        # Przypisanie bibliotek do self, żeby można było używać ich w funkcjach
-        self.bsc = bsc
-        self.os = os
-        
-        # Load environment variables
-        load_dotenv()  # Nie ma potrzeby przypisywania do self
-
-        # Pobranie danych połączenia
-        # Można podać dane w parameters albo użyć .env file
         self.connection_string = connection_string or os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-        self.container_name = container_name or os.getenv('container_name')
-
+        self.container_name = container_name or os.getenv('CONTAINER_NAME')
         
-        # Tworzy klienta (połączenie) do Azure Storage Account używając connection string
-        # Jest to główny punkt dostępu do naszego konta w Azure Storage
-        # Pozwala na:
-        # Przeglądanie wszystkich kontenerów
-        # Tworzenie nowych kontenerów
-        # Zarządzanie uprawnieniami
-        # Wykonywanie operacji na poziomie całego konta
-        self.blob_service_client = self.bsc.from_connection_string(self.connection_string)
-        
-        # Tworzy klienta (połączenie) do konkretnego kontenera w Azure Storage
-        # Pozwala na:
-        # Przeglądanie wszystkich obiektów (blobs) w kontenerze
-        # Tworzenie nowych obiektów
-        # Zarządzanie uprawnieniami
-        # Wykonywanie operacji na poziomie konkretnego kontenera
-        self.container_client = self.blob_service_client.get_container_client(self.container_name)
-    
-        # Walidacja danych
-        # Jeżeli coś jest nie tak z connection string albo container name to zwraca błąd
-        if not self.connection_string: 
-            raise ValueError("You are missing connection string. Check .env file or parameters if you didn't provide it")
-        elif not self.container_name:
-            raise ValueError("You are missing container name. Check .env file or parameters if you didn't provide it")
-
-
-        # Próba otwarcia drzwi (try)
-        # Jeśli coś pójdzie nie tak (except):
-        # Klucz nie pasuje
-        # Drzwi są zablokowane
-        # Brak uprawnień
-        # Informujemy użytkownika o problemie (raise) z dokładnym opisem co się stało
-        
-        # Jest to mechanizm zabezpieczający, który:
-        # Wyłapuje wszystkie możliwe błędy podczas łączenia
-        # Informuje użytkownika w czytelny sposób co poszło nie tak
-        # Pozwala na odpowiednią reakcję na błędy
+        if not self.connection_string:
+            raise ValueError("Missing connection string. Check .env file or parameters")
+        if not self.container_name:
+            raise ValueError("Missing container name. Check .env file or parameters")
+            
         try:
-            # Próba połączenia z Azure Storage
-            self.blob_service_client = self.bsc.from_connection_string(self.connection_string)
+            self.blob_service_client = BlobServiceClient.from_connection_string(self.connection_string)
             self.container_client = self.blob_service_client.get_container_client(self.container_name)
         except Exception as e:
-            # Jeśli połączenie się nie powiedzie, zgłoś błąd z informacją co poszło nie tak
-            # str(e) pokazuje szczegóły oryginalnego błędu
             raise ConnectionError(f"Failed to connect to Azure Storage: {str(e)}")
 
-# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-   # Listing blobs 
-    
-    def blob_list(self):
+    def blob_list(self) -> List[str]:
         """
         Lists all blobs in the container
         Returns:
@@ -83,74 +39,178 @@ class AzureBlobStorage:
         try:
             blobs = self.container_client.list_blobs()
             blob_names = [blob.name for blob in blobs]
-            
-            # Print blobs
-            print(f"\nFiles in {self.container_name} container:")
-            for name in blob_names:
-                print(f"- {name}")
-                
             return blob_names
-            
         except Exception as e:
-            print(f"Error listing blobs: {str(e)}")
-            return []
-        
-# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-   # Creating container
-    def create_container(self, new_container):
+            raise RuntimeError(f"Error listing blobs: {str(e)}")
+
+    def create_container(self, new_container: str) -> str:
         """
         Creates a new container in Azure Blob Storage
+        Args:
+            new_container (str): Name of the container to create
         Returns:
-            str: Message indicating the container was created successfully
+            str: Message indicating result
         """
-        self.containers = self.blob_service_client.list_containers()
-        self.containers_list = []
-        for self.container in self.containers:
-            self.containers_list.append(self.container.name)
+        try:
+            containers = self.blob_service_client.list_containers()
+            existing_containers = [container.name for container in containers]
             
-        if new_container not in self.containers_list:
-            self.container_client = self.blob_service_client.create_container(new_container)
-        else:
-            print(f"Container {new_container} already exists")
-# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-   # Delete container
-    def delete_container(self, container_to_delete):
+            if new_container not in existing_containers:
+                self.blob_service_client.create_container(new_container)
+                return f"Container '{new_container}' created successfully"
+            else:
+                return f"Container '{new_container}' already exists"
+        except Exception as e:
+            raise RuntimeError(f"Error creating container: {str(e)}")
 
+    def delete_container(self, container_to_delete: str) -> str:
         """
         Deletes a container in Azure Blob Storage
         Args:
-            container_name (str): Name of the container to delete
+            container_to_delete (str): Name of the container to delete
+        Returns:
+            str: Message indicating result
         """
-        self.container_client = self.blob_service_client.delete_container(container_to_delete)
-# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-   # Create dataframes from parquet files
-    def parquet_to_df(self, blob_name):
+        try:
+            self.blob_service_client.delete_container(container_to_delete)
+            return f"Container '{container_to_delete}' deleted successfully"
+        except Exception as e:
+            raise RuntimeError(f"Error deleting container: {str(e)}")
+
+    def list_containers(self) -> List[str]:
         """
+        Lists all containers in the storage account
+        Returns:
+            list: List of container names
         """
-# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-   # Create excel files from dataframes
-    def df_to_excel(self, container_name = None):
+        try:
+            containers = self.blob_service_client.list_containers()
+            container_names = [container.name for container in containers]
+            return container_names
+        except Exception as e:
+            raise RuntimeError(f"Error listing containers: {str(e)}")
 
-        blob_list = self.container_client.list_blobs()
-        for blob in blob_list:
-            df = self.bsc.load_blob_to_dataframe(self.connection_string, container_name)
-            df.to_excel(blob.name)
-# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-   # List containers
-    def list_containers(self):
-        self.containers = self.blob_service_client.list_containers()
-        self.containers_list = []
-        for self.container in self.containers:
-            self.containers_list.append(self.container.name)
-        
-        print(f"Available containers: {self.containers_list}") 
-# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    def upload_blob(self, blob_name: str, data: Union[str, bytes, io.IOBase], overwrite: bool = False) -> str:
+        """
+        Uploads data to a blob
+        Args:
+            blob_name (str): Name of the blob
+            data: Data to upload (string, bytes, or file-like object)
+            overwrite (bool): Whether to overwrite existing blob
+        Returns:
+            str: Message indicating result
+        """
+        try:
+            blob_client = self.container_client.get_blob_client(blob_name)
+            blob_client.upload_blob(data, overwrite=overwrite)
+            return f"Blob '{blob_name}' uploaded successfully"
+        except Exception as e:
+            raise RuntimeError(f"Error uploading blob: {str(e)}")
 
+    def download_blob(self, blob_name: str) -> bytes:
+        """
+        Downloads a blob's content
+        Args:
+            blob_name (str): Name of the blob to download
+        Returns:
+            bytes: Blob content
+        """
+        try:
+            blob_client = self.container_client.get_blob_client(blob_name)
+            return blob_client.download_blob().readall()
+        except Exception as e:
+            raise RuntimeError(f"Error downloading blob: {str(e)}")
 
+    def delete_blob(self, blob_name: str) -> str:
+        """
+        Deletes a blob
+        Args:
+            blob_name (str): Name of the blob to delete
+        Returns:
+            str: Message indicating result
+        """
+        try:
+            blob_client = self.container_client.get_blob_client(blob_name)
+            blob_client.delete_blob()
+            return f"Blob '{blob_name}' deleted successfully"
+        except Exception as e:
+            raise RuntimeError(f"Error deleting blob: {str(e)}")
 
+    def parquet_to_df(self, blob_name: str) -> pd.DataFrame:
+        """
+        Downloads a parquet file from blob storage and converts it to a pandas DataFrame
+        Args:
+            blob_name (str): Name of the parquet blob
+        Returns:
+            pd.DataFrame: DataFrame containing the parquet data
+        """
+        try:
+            blob_data = self.download_blob(blob_name)
+            return pd.read_parquet(io.BytesIO(blob_data))
+        except Exception as e:
+            raise RuntimeError(f"Error converting parquet to DataFrame: {str(e)}")
 
-# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    def df_to_excel(self, dataframe: pd.DataFrame, blob_name: str) -> str:
+        """
+        Converts a DataFrame to Excel format and uploads it as a blob
+        Args:
+            dataframe (pd.DataFrame): DataFrame to convert
+            blob_name (str): Name for the Excel blob (should end with .xlsx)
+        Returns:
+            str: Message indicating result
+        """
+        try:
+            buffer = io.BytesIO()
+            dataframe.to_excel(buffer, index=False)
+            buffer.seek(0)
+            
+            return self.upload_blob(blob_name, buffer.getvalue(), overwrite=True)
+        except Exception as e:
+            raise RuntimeError(f"Error converting DataFrame to Excel: {str(e)}")
 
-# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    def df_to_parquet(self, dataframe: pd.DataFrame, blob_name: str) -> str:
+        """
+        Converts a DataFrame to Parquet format and uploads it as a blob
+        Args:
+            dataframe (pd.DataFrame): DataFrame to convert
+            blob_name (str): Name for the Parquet blob (should end with .parquet)
+        Returns:
+            str: Message indicating result
+        """
+        try:
+            buffer = io.BytesIO()
+            dataframe.to_parquet(buffer, index=False)
+            buffer.seek(0)
+            
+            return self.upload_blob(blob_name, buffer.getvalue(), overwrite=True)
+        except Exception as e:
+            raise RuntimeError(f"Error converting DataFrame to Parquet: {str(e)}")
 
-# -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    def csv_to_df(self, blob_name: str) -> pd.DataFrame:
+        """
+        Downloads a CSV file from blob storage and converts it to a pandas DataFrame
+        Args:
+            blob_name (str): Name of the CSV blob
+        Returns:
+            pd.DataFrame: DataFrame containing the CSV data
+        """
+        try:
+            blob_data = self.download_blob(blob_name)
+            return pd.read_csv(io.BytesIO(blob_data))
+        except Exception as e:
+            raise RuntimeError(f"Error converting CSV to DataFrame: {str(e)}")
+
+    def df_to_csv(self, dataframe: pd.DataFrame, blob_name: str) -> str:
+        """
+        Converts a DataFrame to CSV format and uploads it as a blob
+        Args:
+            dataframe (pd.DataFrame): DataFrame to convert
+            blob_name (str): Name for the CSV blob (should end with .csv)
+        Returns:
+            str: Message indicating result
+        """
+        try:
+            csv_data = dataframe.to_csv(index=False)
+            return self.upload_blob(blob_name, csv_data, overwrite=True)
+        except Exception as e:
+            raise RuntimeError(f"Error converting DataFrame to CSV: {str(e)}")
